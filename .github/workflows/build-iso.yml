@@ -2,13 +2,15 @@ name: Bunker OS ISO
 
 on:
 push:
-branches: [main]
+branches:
+- main
 paths:
 - "bunker-os/"
 - "iso/"
 - ".github/workflows/build-iso.yml"
 pull_request:
-branches: [main]
+branches:
+- main
 paths:
 - "bunker-os/"
 - "iso/"
@@ -24,7 +26,7 @@ cancel-in-progress: true
 
 jobs:
 build-iso:
-name: Build bootable Arch ISO
+name: Build Bunker OS ISO
 runs-on: ubuntu-24.04
 timeout-minutes: 90
 
@@ -32,13 +34,20 @@ steps:
   - name: Checkout repository
     uses: actions/checkout@v4
 
-  - name: Prepare output directory
-    run: mkdir -p out
-
-  - name: Build ISO with archiso
+  - name: Check project directory
     shell: bash
     run: |
       set -euo pipefail
+      test -d bunker-os || {
+        echo "::error::No existe el directorio bunker-os/"
+        exit 1
+      }
+
+  - name: Build ISO using Arch Linux and archiso
+    shell: bash
+    run: |
+      set -euo pipefail
+      mkdir -p "$GITHUB_WORKSPACE/out"
 
       docker run --privileged --rm \
         -v "$GITHUB_WORKSPACE:/workspace" \
@@ -47,30 +56,38 @@ steps:
         bash -euo pipefail -c '
           pacman -Syu --noconfirm archiso
 
-          rm -rf /workspace/iso/profile
-          mkdir -p /workspace/iso/profile
-          cp -a /usr/share/archiso/configs/releng/. /workspace/iso/profile/
+          rm -rf /tmp/bunker-profile /tmp/bunker-work
+          mkdir -p /tmp/bunker-profile
 
-          mkdir -p /workspace/iso/profile/airootfs/opt/bunker-os
-          cp -a /workspace/bunker-os/. /workspace/iso/profile/airootfs/opt/bunker-os/
-          rm -rf /workspace/iso/profile/airootfs/opt/bunker-os/.github
+          cp -a /usr/share/archiso/configs/releng/. \
+            /tmp/bunker-profile/
 
-          mkdir -p /workspace/iso/profile/airootfs/etc
+          mkdir -p \
+            /tmp/bunker-profile/airootfs/opt/bunker-os
+
+          cp -a /workspace/bunker-os/. \
+            /tmp/bunker-profile/airootfs/opt/bunker-os/
+
+          rm -rf \
+            /tmp/bunker-profile/airootfs/opt/bunker-os/.git \
+            /tmp/bunker-profile/airootfs/opt/bunker-os/.github
+
+          mkdir -p /tmp/bunker-profile/airootfs/etc
+
           printf "%s\n" \
             "Bunker OS - ISO de desarrollo" \
-            "Entorno live basado en Arch Linux." \
+            "Live ISO basada en Arch Linux." \
             "Código del proyecto: /opt/bunker-os" \
-            "Prototipo: revisar README antes de instalar." \
-            > /workspace/iso/profile/airootfs/etc/motd
+            "Prototipo de desarrollo; no es un instalador completo." \
+            > /tmp/bunker-profile/airootfs/etc/motd
 
-          mkdir -p /workspace/out
           mkarchiso -v \
-            -w /tmp/bunker-archiso-work \
+            -w /tmp/bunker-work \
             -o /workspace/out \
-            /workspace/iso/profile
+            /tmp/bunker-profile
         '
 
-  - name: Verify ISO and generate checksum
+  - name: Verify ISO and generate SHA256
     shell: bash
     run: |
       set -euo pipefail
@@ -78,12 +95,13 @@ steps:
       images=(out/*.iso)
 
       if (( ${#images[@]} == 0 )); then
-        echo "::error::No se generó ningún archivo ISO."
+        echo "::error::La compilación no ha generado ninguna ISO."
         exit 1
       fi
 
       ls -lh "${images[@]}"
-      sha256sum "${images[@]}" | tee out/SHA256SUMS
+      sha256sum "${images[@]}" > out/SHA256SUMS
+      cat out/SHA256SUMS
 
   - name: Upload ISO artifact
     uses: actions/upload-artifact@v4
