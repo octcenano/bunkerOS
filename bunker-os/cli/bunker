@@ -1,0 +1,380 @@
+#!/bin/bash
+# =============================================================================
+# Bunker OS - Interfaz de Línea de Comandos (CLI)
+# Ubicación: /usr/bin/bunker
+# Propósito: punto de entrada principal del sistema
+# Desarrollador jefe: <tu_usuario> | Ingeniero colaborador: Apodex 1.1 Mini
+# =============================================================================
+
+set -o pipefail
+
+BUNKER_ROOT="${BUNKER_ROOT:-/usr/lib/bunker}"
+BUNKER_VERSION="0.1.0"
+
+# Cargar librería compartida si está disponible
+if [[ -f "$BUNKER_ROOT/shared/lib.sh" ]]; then
+    source "$BUNKER_ROOT/shared/lib.sh"
+else
+    # Modo portable: usar rutas relativas
+    BUNKER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    source "$BUNKER_ROOT/shared/lib.sh"
+fi
+
+export BUNKER_ROOT
+
+# -----------------------------------------------------------------------------
+# Ayuda
+# -----------------------------------------------------------------------------
+show_help() {
+    cat <<EOF
+Bunker OS v$BUNKER_VERSION - Sistema Operativo Modular
+Desarrollador jefe: <tu_usuario> | Ingeniero colaborador: Apodex 1.1 Mini
+
+Uso: bunker <comando> [opciones]
+
+Comandos principales:
+  engine        Iniciar el motor del sistema con selección de modo
+  engine-flags  Gestionar flags, adapt, modos y capas del engine
+  core          Gestionar el núcleo del sistema
+  config        Gestionar la configuración
+  api           Interactuar con la API del núcleo
+  hardware      Información y detección de hardware
+  rollback      Gestionar puntos de restauración
+  service       Gestionar servicios del sistema
+  layer         Gestionar capas del sistema
+  sentinel      Iniciar/detener Bunker Sentinel
+  guardian      Iniciar/detener Bunker Guardian
+  update        Actualizar el sistema (pacman + AUR)
+  status        Mostrar estado del sistema
+  help          Mostrar esta ayuda
+
+Opciones globales:
+  --mode <m>        Modo de operación: gaming | ia | ghost | office | hacking | custom
+  --layer <l>       Activar capa: stealth | performance | lowram | battery | focus | ai
+  --service      Activar servicio: maintenance | update | health | recovery | harden | ai
+  --stealth         Activar capa stealth
+  --performance     Activar capa performance
+  --lowram          Activar capa lowram
+  --battery         Activar capa battery
+  --focus           Activar capa focus
+  --ai              Activar capa ai
+  --adapt           Adaptar el sistema al hardware detectado
+  --modes           Listar modos disponibles
+  --verbose         Mostrar información detallada
+  --quiet           Solo mostrar errores
+  --help, -h        Mostrar esta ayuda
+
+Ejemplos:
+  bunker engine --mode gaming --layer performance
+  bunker engine-flags adapt
+  bunker engine-flags mode gaming
+  bunker engine-flags layer stealth
+  bunker engine-flags list-modes
+  bunker engine-flags list-layers
+  bunker core start
+  bunker config set engine default_mode gaming
+  bunker hardware detect
+  bunker rollback list
+  bunker update all
+  bunker sentinel start
+
+EOF
+}
+
+# -----------------------------------------------------------------------------
+# Comandos
+# -----------------------------------------------------------------------------
+cmd_engine() {
+    local mode=""
+    local layers=()
+    local adapt=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --mode) mode="$2"; shift 2 ;;
+            --layer) layers+=("$2"); shift 2 ;;
+            --modes)
+                echo "Modos disponibles:"
+                for m in gaming ia ghost office hacking custom; do
+                    echo "  - $m"
+                done
+                return 0
+                ;;
+            --adapt) adapt=true; shift ;;
+            --) shift; break ;;
+            *) break ;;
+        esac
+    done
+
+    bunker_info "Iniciando motor de Bunker OS..."
+    bunker_info "Modo: ${mode:-$(bunker_config_get engine default_mode)}"
+
+    # Cargar y ejecutar el motor
+    if [[ -f "$BUNKER_ROOT/engine/engine.sh" ]]; then
+        export ENGINE_MODE="$mode"
+        export ENGINE_LAYERS="${layers[*]}"
+        export ENGINE_ADAPT="$adapt"
+        source "$BUNKER_ROOT/engine/engine.sh"
+        engine_main "$@"
+    else
+        bunker_error "Motor no encontrado: $BUNKER_ROOT/engine/engine.sh"
+        bunker_exit 1
+    fi
+}
+
+cmd_engine_flags() {
+    if [[ -f "$BUNKER_ROOT/engine/engine-flags.sh" ]]; then
+        source "$BUNKER_ROOT/engine/engine-flags.sh"
+        main "$@"
+    else
+        bunker_error "Engine flags no encontrado: $BUNKER_ROOT/engine/engine-flags.sh"
+        bunker_exit 1
+    fi
+}
+
+cmd_core() {
+    if [[ -f "$BUNKER_ROOT/core/core.sh" ]]; then
+        source "$BUNKER_ROOT/core/core.sh"
+        core_main "$@"
+    else
+        bunker_error "Core no encontrado: $BUNKER_ROOT/core/core.sh"
+        bunker_exit 1
+    fi
+}
+
+cmd_config() {
+    if [[ -f "$BUNKER_ROOT/core/config.sh" ]]; then
+        source "$BUNKER_ROOT/core/config.sh"
+        config_main "$@"
+    else
+        bunker_error "Config no encontrado: $BUNKER_ROOT/core/config.sh"
+        bunker_exit 1
+    fi
+}
+
+cmd_api() {
+    if [[ -f "$BUNKER_ROOT/core/api.sh" ]]; then
+        source "$BUNKER_ROOT/core/api.sh"
+        api_main "$@"
+    else
+        bunker_error "API no encontrada: $BUNKER_ROOT/core/api.sh"
+        bunker_exit 1
+    fi
+}
+
+cmd_hardware() {
+    local action="${1:-info}"
+    shift || true
+
+    if [[ -f "$BUNKER_ROOT/hardware/hal.sh" ]]; then
+        source "$BUNKER_ROOT/hardware/hal.sh"
+        case "$action" in
+            info) hardware_info "$@" ;;
+            detect) hardware_detect_all "$@" ;;
+            optimize) hardware_optimize "$@" ;;
+            *) bunker_error "Acción desconocida: $action" ;;
+        esac
+    else
+        bunker_error "HAL no encontrado: $BUNKER_ROOT/hardware/hal.sh"
+        bunker_exit 1
+    fi
+}
+
+cmd_rollback() {
+    if [[ -f "$BUNKER_ROOT/rollback/rollback.sh" ]]; then
+        source "$BUNKER_ROOT/rollback/rollback.sh"
+        rollback_main "$@"
+    else
+        bunker_error "Rollback no encontrado: $BUNKER_ROOT/rollback/rollback.sh"
+        bunker_exit 1
+    fi
+}
+
+cmd_service() {
+    local action="${1:-list}"
+    shift || true
+
+    case "$action" in
+        list)
+            bunker_info "Servicios disponibles:"
+            for s in maintenance update health recovery harden ai; do
+                local enabled
+                enabled=$(bunker_config_get services "$s" 2>/dev/null)
+                echo "  - $s: ${enabled:-false}"
+            done
+            ;;
+        enable)
+            bunker_config_set services "$1" "true"
+            bunker_info "Servicio habilitado: $1"
+            ;;
+        disable)
+            bunker_config_set services "$1" "false"
+            bunker_info "Servicio deshabilitado: $1"
+            ;;
+        *)
+            bunker_error "Comando de servicio desconocido: $action"
+            ;;
+    esac
+}
+
+cmd_layer() {
+    local action="${1:-list}"
+    shift || true
+
+    case "$action" in
+        list)
+            bunker_info "Capas disponibles:"
+            for l in stealth performance lowram battery focus ai; do
+                echo "  - $l"
+            done
+            ;;
+        enable)
+            local layers_json
+            layers_json=$(bunker_config_get layers "enabled_layers")
+            local new_layers
+            new_layers=$(echo "$layers_json" | tr -d '[],"' | tr ',' ' ')
+            new_layers="$new_layers $1"
+            bunker_config_set layers "enabled_layers" "[$(echo $new_layers | tr ' ' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')]"
+            bunker_info "Capa habilitada: $1"
+            ;;
+        disable)
+            bunker_warn "Desactivar capas manualmente requiere editar la configuración"
+            ;;
+        *)
+            bunker_error "Comando de capa desconocido: $action"
+            ;;
+    esac
+}
+
+cmd_sentinel() {
+    if [[ -f "$BUNKER_ROOT/sentinel/sentinel.sh" ]]; then
+        source "$BUNKER_ROOT/sentinel/sentinel.sh"
+        sentinel_main "$@"
+    else
+        bunker_error "Sentinel no encontrado: $BUNKER_ROOT/sentinel/sentinel.sh"
+        bunker_exit 1
+    fi
+}
+
+cmd_guardian() {
+    if [[ -f "$BUNKER_ROOT/guardian/guardian.sh" ]]; then
+        source "$BUNKER_ROOT/guardian/guardian.sh"
+        guardian_main "$@"
+    else
+        bunker_error "Guardian no encontrado: $BUNKER_ROOT/guardian/guardian.sh"
+        bunker_exit 1
+    fi
+}
+
+cmd_update() {
+    bunker_info "Actualizando Bunker OS..."
+    bunker_require_root
+
+    case "${1:-all}" in
+        all)
+            bunker_info "Actualizando paquetes del sistema (pacman)..."
+            pacman -Syu --noconfirm 2>&1 | tee /var/log/bunker/update.log
+            bunker_info "Actualizando configuración de Bunker..."
+            bunker_config_migrate 0.0.1 0.1.0 2>/dev/null || true
+            ;;
+        bunker)
+            bunker_info "Actualizando componentes de Bunker..."
+            # Actualizar desde el repositorio
+            ;;
+        aur)
+            bunker_info "Actualizando AUR..."
+            if command -v yay &>/dev/null; then
+                yay -Syu --noconfirm 2>&1 | tee /var/log/bunker/aur-update.log
+            elif command -v paru &>/dev/null; then
+                paru -Syu --noconfirm 2>&1 | tee /var/log/bunker/aur-update.log
+            else
+                bunker_error "No se encontró yay/paru para gestionar el AUR"
+                bunker_exit 1
+            fi
+            ;;
+        *)
+            bunker_error "Tipo de actualización desconocido: $1"
+            ;;
+    esac
+}
+
+cmd_status() {
+    bunker_info "=== ESTADO DE BUNKER OS ==="
+    echo "Versión: $BUNKER_VERSION"
+    echo "Modo: ${ENGINE_MODE:-$(bunker_config_get engine default_mode)}"
+    echo "Capas: ${LAYERS[*]:-$(bunker_config_get layers enabled_layers)}"
+    echo "Estado conocido: $(bunker_known_state)"
+    echo ""
+    echo "=== Servicios ==="
+    cmd_service list
+    echo ""
+    echo "=== Procesos del núcleo ==="
+    ps aux | grep -E "bunker" | grep -v grep | head -20
+}
+
+# -----------------------------------------------------------------------------
+# Parseo de opciones globales
+# -----------------------------------------------------------------------------
+parse_global_options() {
+    local verbose=false
+    local quiet=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --verbose|-v) verbose=true; export BUNKER_VERBOSE=true; shift ;;
+            --quiet|-q) quiet=true; BUNKER_LOG_LEVEL=$(bunker_config_get logging level warn); shift ;;
+            --help|-h) show_help; exit 0 ;;
+            --mode) ENGINE_MODE="$2"; shift 2 ;;
+            --layer) export ENGINE_LAYERS="${ENGINE_LAYERS:+$ENGINE_LAYERS }$2"; shift 2 ;;
+            --service) export ENGINE_SERVICES="${ENGINE_SERVICES:+$ENGINE_SERVICES }$2"; shift 2 ;;
+            --stealth) export ENGINE_LAYERS="${ENGINE_LAYERS:+$ENGINE_LAYERS }stealth"; shift ;;
+            --performance) export ENGINE_LAYERS="${ENGINE_LAYERS:+$ENGINE_LAYERS }performance"; shift ;;
+            --lowram) export ENGINE_LAYERS="${ENGINE_LAYERS:+$ENGINE_LAYERS }lowram"; shift ;;
+            --battery) export ENGINE_LAYERS="${ENGINE_LAYERS:+$ENGINE_LAYERS }battery"; shift ;;
+            --focus) export ENGINE_LAYERS="${ENGINE_LAYERS:+$ENGINE_LAYERS }focus"; shift ;;
+            --ai) export ENGINE_LAYERS="${ENGINE_LAYERS:+$ENGINE_LAYERS }ai"; shift ;;
+            --adapt) export ENGINE_ADAPT="true"; shift ;;
+            --modes)
+                echo "Modos disponibles: gaming | ia | ghost | office | hacking | custom"
+                exit 0
+                ;;
+            *) break ;;
+        esac
+    done
+}
+
+# -----------------------------------------------------------------------------
+# Punto de entrada principal
+# -----------------------------------------------------------------------------
+main() {
+    local command="${1:-help}"
+    shift || true
+
+    # Parsear opciones globales primero
+    parse_global_options "$@"
+
+    case "$command" in
+        engine)      cmd_engine "$@" ;;
+        engine-flags) cmd_engine_flags "$@" ;;
+        core)        cmd_core "$@" ;;
+        config)      cmd_config "$@" ;;
+        api)         cmd_api "$@" ;;
+        hardware)    cmd_hardware "$@" ;;
+        rollback)    cmd_rollback "$@" ;;
+        service)     cmd_service "$@" ;;
+        layer)       cmd_layer "$@" ;;
+        sentinel)    cmd_sentinel "$@" ;;
+        guardian)    cmd_guardian "$@" ;;
+        update)      cmd_update "$@" ;;
+        status)      cmd_status "$@" ;;
+        help|--help|-h) show_help ;;
+        version|--version|-V) echo "Bunker OS v$BUNKER_VERSION" ;;
+        *)
+            bunker_error "Comando desconocido: $command"
+            echo "Ejecuta 'bunker help' para ver la ayuda completa."
+            bunker_exit 1
+            ;;
+    esac
+}
+
+main "$@"

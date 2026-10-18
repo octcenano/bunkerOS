@@ -1,0 +1,23 @@
+[Unit]
+Description=Bunker OS Update Service
+Documentation=man:bunker(8)
+After=bunker-core.service network-online.target
+Requires=bunker-core.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/bunker/services/update.sh start
+ExecStop=/usr/lib/bunker/services/update.sh stop
+Restart=on-failure
+RestartSec=600
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/bunker /var/log/bunker /var/cache/pacman
+
+[Install]
+WantedBy=multi-user.target

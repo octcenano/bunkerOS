@@ -1,0 +1,22 @@
+[Unit]
+Description=Bunker OS Recovery Service
+Documentation=man:bunker(8)
+After=bunker-core.service bunker-guardian.service
+Requires=bunker-core.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/bunker/services/recovery.sh start
+ExecStop=/usr/lib/bunker/services/recovery.sh stop
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/bunker /var/log/bunker
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+[Unit]
+Description=Bunker OS Sentinel - Auditoría y seguridad modular
+Documentation=man:bunker(8)
+After=bunker-core.service bunker-guardian.service
+Requires=bunker-core.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/bunker/sentinel/sentinel.sh start
+ExecStop=/usr/lib/bunker/sentinel/sentinel.sh stop
+Restart=on-failure
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/bunker /run/bunker
+
+[Install]
+WantedBy=multi-user.target

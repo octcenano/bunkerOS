@@ -1,0 +1,101 @@
+# -*- mode: makefile -*-
+# Bunker OS - PKGBUILD
+# Distribución Arch Linux basada en Bunker OS
+# Desarrollador jefe: <tu_usuario>
+# Ingeniero colaborador: Apodex 1.1 Mini
+
+pkgname=bunker-os
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Distribución Arch Linux con núcleo Bunker: detección de hardware, modos de operación, seguridad modular y rollback automático"
+arch=('x86_64')
+url="https://github.com/tu_usuario/bunker-os"
+license=('MIT')
+depends=(
+    'linux'            # kernel Linux
+    'systemd'          # init system
+    'pacman'           # gestor de paquetes
+    'base-devel'       # herramientas de compilación
+    'python'           # scripting y herramientas
+    'socat'            # comunicación IPC
+)
+makedepends=('git' 'make' 'gcc')
+provides=("bunker-os=$pkgver")
+conflicts=('bunker-os-base')
+
+# Directorio de trabajo
+srcdir="$srcdir/$pkgname-$pkgver"
+
+build() {
+    cd "$srcdir"
+    # Compilar extensiones del kernel (C + assembly)
+    make -C kernel-extensions || return 1
+    # Compilar drivers Bunker
+    make -C drivers || return 1
+}
+
+package() {
+    cd "$srcdir"
+
+    # Instalar CLI
+    install -Dm755 cli/bunker "$pkgdir/usr/bin/bunker"
+
+    # Instalar core
+    install -Dm755 core/core.sh "$pkgdir/usr/lib/bunker/core/core.sh"
+    install -Dm755 core/config.sh "$pkgdir/usr/lib/bunker/core/config.sh"
+    install -Dm755 core/api.sh "$pkgdir/usr/lib/bunker/core/api.sh"
+
+    # Instalar engine y selección de modos
+    install -Dm755 engine/engine.sh "$pkgdir/usr/lib/bunker/engine/engine.sh"
+    install -Dm755 engine/mode-selector.sh "$pkgdir/usr/lib/bunker/engine/mode-selector.sh"
+    install -Dm755 engine/engine-flags.sh "$pkgdir/usr/lib/bunker/engine/engine-flags.sh"
+
+    # Instalar hardware detection (HAL)
+    install -Dm755 hardware/hal.sh "$pkgdir/usr/lib/bunker/hardware/hal.sh"
+
+    # Instalar rollback
+    install -Dm755 rollback/rollback.sh "$pkgdir/usr/lib/bunker/rollback/rollback.sh"
+
+    # Instalar shared library
+    install -Dm755 shared/lib.sh "$pkgdir/usr/lib/bunker/shared/lib.sh"
+
+    # Instalar guardian
+    install -Dm755 guardian/guardian.sh "$pkgdir/usr/lib/bunker/guardian/guardian.sh"
+    install -Dm755 guardian/watchdogs/*.sh "$pkgdir/usr/lib/bunker/guardian/watchdogs/"
+    install -Dm755 guardian/daemons/*.sh "$pkgdir/usr/lib/bunker/guardian/daemons/"
+
+    # Instalar servicios
+    install -Dm755 services/*.sh "$pkgdir/usr/lib/bunker/services/"
+
+    # Instalar sentinel
+    install -Dm755 sentinel/sentinel.sh "$pkgdir/usr/lib/bunker/sentinel/sentinel.sh"
+    install -Dm755 sentinel/modules/*.sh "$pkgdir/usr/lib/bunker/sentinel/modules/"
+
+    # Instalar pruebas
+    install -Dm755 test/test-runner.sh "$pkgdir/usr/lib/bunker/test/test-runner.sh"
+    install -Dm755 test/integration-test.sh "$pkgdir/usr/lib/bunker/test/integration-test.sh"
+    install -Dm755 test/regression-test.sh "$pkgdir/usr/lib/bunker/test/regression-test.sh"
+
+    # Instalar systemd units
+    install -Dm644 base/systemd/bunker-core.service "$pkgdir/usr/lib/systemd/system/bunker-core.service"
+    install -Dm644 base/systemd/bunker-guardian.service "$pkgdir/usr/lib/systemd/system/bunker-guardian.service"
+    install -Dm644 base/systemd/bunker-sentinel.service "$pkgdir/usr/lib/systemd/system/bunker-sentinel.service"
+    install -Dm644 base/systemd/bunker-maintenance.service "$pkgdir/usr/lib/systemd/system/bunker-maintenance.service"
+    install -Dm644 base/systemd/bunker-update.service "$pkgdir/usr/lib/systemd/system/bunker-update.service"
+    install -Dm644 base/systemd/bunker-health.service "$pkgdir/usr/lib/systemd/system/bunker-health.service"
+    install -Dm644 base/systemd/bunker-recovery.service "$pkgdir/usr/lib/systemd/system/bunker-recovery.service"
+    install -Dm644 base/systemd/bunker-harden.service "$pkgdir/usr/lib/systemd/system/bunker-harden.service"
+    install -Dm644 base/systemd/bunker-ai.service "$pkgdir/usr/lib/systemd/system/bunker-ai.service"
+
+    # Instalar hooks de pacman
+    install -Dm755 base/pacman/bunker-post-install.hook "$pkgdir/usr/share/pacman/hooks/BunkerPostInstall.hook"
+
+    # Instalar docs
+    install -Dm644 README.md "$pkgdir/usr/share/doc/bunker-os/README.md"
+    install -Dm644 docs/ARCHITECTURE.md "$pkgdir/usr/share/doc/bunker-os/ARCHITECTURE.md"
+    install -Dm644 docs/DOCUMENTATION.md "$pkgdir/usr/share/doc/bunker-os/DOCUMENTATION.md"
+
+    # Crear directorio de configuración
+    install -d "$pkgdir/etc/bunker"
+    install -Dm644 base/etc/bunker.conf "$pkgdir/etc/bunker/bunker.conf"
+}

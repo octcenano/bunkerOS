@@ -1,0 +1,22 @@
+[Unit]
+Description=Bunker OS Guardian - Monitorización y auto-reparación
+Documentation=man:bunker(8)
+After=bunker-core.service
+Requires=bunker-core.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/bunker/guardian/guardian.sh start
+ExecStop=/usr/lib/bunker/guardian/guardian.sh stop
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/bunker /run/bunker
+
+[Install]
+WantedBy=multi-user.target

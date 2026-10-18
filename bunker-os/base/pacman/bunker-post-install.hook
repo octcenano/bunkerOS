@@ -1,0 +1,23 @@
+# Bunker OS - Pacman Post-Install Hook
+# Se ejecuta después de cada operación de instalación de paquetes
+# Objetivo: mantener el sistema adaptado al hardware y aplicar hardening
+
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = bunker-os
+Target = bunker-os-core
+Target = bunker-os-engine
+Target = bunker-os-hardware
+Target = bunker-os-guardian
+Target = bunker-os-sentinel
+Target = linux
+Target = linux-lts
+Target = linux-zen
+Target = linux-hardened
+
+[Action]
+Description = Ejecutando post-instalación de Bunker OS...
+When = POST
+Exec = /usr/lib/bunker/core/core.sh post-install

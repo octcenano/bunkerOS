@@ -1,0 +1,22 @@
+[Unit]
+Description=Bunker OS Maintenance Service
+Documentation=man:bunker(8)
+After=bunker-core.service
+Requires=bunker-core.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/bunker/services/maintenance.sh start
+ExecStop=/usr/lib/bunker/services/maintenance.sh stop
+Restart=on-failure
+RestartSec=300
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/bunker /var/log/bunker
+
+[Install]
+WantedBy=multi-user.target

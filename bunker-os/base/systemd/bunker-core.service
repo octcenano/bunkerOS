@@ -1,0 +1,22 @@
+[Unit]
+Description=Bunker OS Core Engine
+Documentation=man:bunker(8)
+After=systemd-udev-settle.service local-fs.target
+Requires=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/bunker/core/core.sh start
+ExecStop=/usr/lib/bunker/core/core.sh stop
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/bunker /run/bunker
+
+[Install]
+WantedBy=multi-user.target
