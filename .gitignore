@@ -1,14 +1,95 @@
-*.tar
-*.tar.*
-*.jar
-*.exe
-*.msi
-*.deb
-*.zip
-*.tgz
-*.log
-*.log.*
-*.sig
 
-pkg/
-src/
+# =========================
+# Bunker OS - Git ignore
+# =========================
+
+# Temporales y copias de seguridad
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+
+# Logs
+*.log
+logs/
+log/
+
+# Variables de entorno y secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# C / C++ y compilación
+*.o
+*.a
+*.so
+*.so.*
+*.out
+*.gcda
+*.gcno
+*.profraw
+core
+core.*
+
+# Archivos de compilación
+build/
+dist/
+out/
+target/
+*.iso
+*.img
+*.qcow2
+*.raw
+
+# Arch Linux y paquetes
+*.pkg.tar
+*.pkg.tar.*
+*.sig
+*.iso.zsync
+work/
+airootfs/
+pacman-cache/
+
+# GitHub Actions / herramientas
+coverage/
+htmlcov/
+reports/
+test-results/
+
+# Editores e IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+.directory
+
+# Máquinas virtuales
+*.vdi
+*.vmdk
+*.vhd
+*.vhdx
+
+# Swap de editores
+.*.sw?
