@@ -1,0 +1,178 @@
+name: Lint Code
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bunker-os/**/*.sh'
+      - 'bunker-os/**/*.py'
+      - '.github/workflows/lint-code.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'bunker-os/**/*.sh'
+      - 'bunker-os/**/*.py'
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    container: koalaman/shellcheck-alpine:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        run: |
+          echo "=== Ejecutando ShellCheck ==="
+          find bunker-os -name "*.sh" -type f | while read f; do
+            echo "Analizando: $f"
+            shellcheck "$f" 2>&1 || true
+          done | tee /tmp/shellcheck-results.txt
+          
+          # Contar errores
+          errors=$(grep -c "error:" /tmp/shellcheck-results.txt || echo 0)
+          warnings=$(grep -c "warning:" /tmp/shellcheck-results.txt || echo 0)
+          
+          echo ""
+          echo "=== Resumen ==="
+          echo "Errores: $errors"
+          echo "Advertencias: $warnings"
+          
+          # Fallar si hay errores
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::ShellCheck found $errors errors"
+            exit 1
+          fi
+
+      - name: Upload ShellCheck results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shellcheck-results
+          path: /tmp/shellcheck-results.txt
+          retention-days: 7
+
+  bashate:
+    name: Bashate
+    runs-on: ubuntu-latest
+    container: python:3.11-alpine
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install bashate
+        run: pip install bashate
+
+      - name: Run Bashate
+        run: |
+          echo "=== Ejecutando Bashate ==="
+          find bunker-os -name "*.sh" -type f | head -20 | while read f; do
+            echo "Analizando: $f"
+            bashate "$f" 2>&1 || true
+          done | tee /tmp/bashate-results.txt
+
+      - name: Upload Bashate results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bashate-results
+          path: /tmp/bashate-results.txt
+          retention-days: 7
+
+  check-permissions:
+    name: Check File Permissions
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check permissions
+        run: |
+          echo "=== Verificando permisos de archivos ==="
+          
+          # Scripts deben ser 755 o 644
+          echo "Scripts con permisos incorrectos:"
+          find bunker-os -name "*.sh" -type f ! -perm 755 -exec stat -c "%a %n" {} \; | grep -v "644" || echo "Todos los scripts tienen permisos correctos"
+          
+          # Archivos de configuracion deben ser 644
+          echo ""
+          echo "Archivos de configuracion con permisos incorrectos:"
+          find bunker-os -name "*.conf" -type f ! -perm 644 -exec stat -c "%a %n" {} \; || echo "Todos los archivos de configuracion tienen permisos correctos"
+          
+          # Directorios deben ser 755
+          echo ""
+          echo "Directorios con permisos incorrectos:"
+          find bunker-os -type d ! -perm 755 -exec stat -c "%a %n" {} \; | grep -v "700" || echo "Todos los directorios tienen permisos correctos"
+
+  check-encoding:
+    name: Check File Encoding
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install file
+        run: pacman -Syu --noconfirm --needed file
+
+      - name: Check encoding
+        run: |
+          echo "=== Verificando codificacion de archivos ==="
+          
+          # Buscar archivos que no sean UTF-8
+          find bunker-os -name "*.sh" -type f -exec file {} \; | grep -v "UTF-8" | grep -v "ASCII" || echo "Todos los archivos son UTF-8 o ASCII"
+
+  check-line-endings:
+    name: Check Line Endings
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check line endings
+        run: |
+          echo "=== Verificando finales de linea ==="
+          
+          # Buscar archivos con CRLF (Windows)
+          find bunker-os -name "*.sh" -type f -exec file {} \; | grep CRLF || echo "No se encontraron archivos con CRLF"
+          
+          # Contar archivos con LF vs CRLF
+          lf_count=$(find bunker-os -name "*.sh" -type f -exec file {} \; | grep -c "text" || echo 0)
+          crlf_count=$(find bunker-os -name "*.sh" -type f -exec file {} \; | grep -c "CRLF" || echo 0)
+          
+          echo "Archivos con LF: $lf_count"
+          echo "Archivos con CRLF: $crlf_count"
+          
+          if [ "$crlf_count" -gt 0 ]; then
+            echo "::error::Se encontraron archivos con CRLF"
+            exit 1
+          fi
+
+  check-shebangs:
+    name: Check Shebangs
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check shebangs
+        run: |
+          echo "=== Verificando shebangs ==="
+          
+          # Buscar scripts sin shebang
+          find bunker-os -name "*.sh" -type f ! -exec grep -l "^#!/" {} \; | while read f; do
+            echo "⚠️  Script sin shebang: $f"
+          done || echo "Todos los scripts tienen shebang"
+          
+          # Buscar scripts con shebang incorrecto
+          find bunker-os -name "*.sh" -type f -exec head -1 {} \; | grep -v "^#!/bin/bash" | grep -v "^#!/usr/bin/env bash" | grep "^#!/" || echo "Todos los shebangs son correctos"

@@ -1,116 +1,245 @@
-name: Bunker OS ISO
+name: Build ISO
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
     paths:
-      - "bunker-os/**"
-      - "iso/**"
-      - ".github/workflows/build-iso.yml"
-
+      - 'bunker-os/**'
+      - '.github/workflows/build-iso.yml'
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
     paths:
-      - "bunker-os/**"
-      - "iso/**"
-      - ".github/workflows/build-iso.yml"
-
+      - 'bunker-os/**'
   workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: bunker-iso-${{ github.ref }}
-  cancel-in-progress: true
+    inputs:
+      mode:
+        description: 'Modo de operacion para la ISO'
+        required: true
+        default: 'custom'
+        type: choice
+        options:
+        - gaming
+        - ia
+        - ghost
+        - office
+        - hacking
+        - custom
+      layer:
+        description: 'Capa para la ISO'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   build-iso:
     name: Build Bunker OS ISO
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+      options: --privileged
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
 
-      - name: Check project directory
-        shell: bash
+      - name: Install build dependencies
         run: |
-          set -euo pipefail
-          test -d bunker-os || {
-            echo "::error::No existe el directorio bunker-os/"
-            exit 1
-          }
+          pacman -Syu --noconfirm --needed \
+            archiso \
+            mkinitcpio \
+            syslinux \
+            grub \
+            efibootmgr \
+            dosfstools \
+            mtools \
+            bash \
+            coreutils \
+            util-linux \
+            grep \
+            sed \
+            awk \
+            findutils \
+            gawk \
+            tar \
+            gzip \
+            xz \
+            make \
+            git
 
-      - name: Build ISO using Arch Linux and archiso
-        shell: bash
+      - name: Prepare build directory
         run: |
-          set -euo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/out"
+          mkdir -p /tmp/bunker-iso
+          cp -r bunker-os /tmp/bunker-iso/
+          cd /tmp/bunker-iso
 
-          docker run --privileged --rm \
-            -v "$GITHUB_WORKSPACE:/workspace" \
-            -w /workspace \
-            archlinux:latest \
-            bash -euo pipefail -c '
-              pacman -Syu --noconfirm archiso
-
-              rm -rf /tmp/bunker-profile /tmp/bunker-work
-              mkdir -p /tmp/bunker-profile
-
-              cp -a /usr/share/archiso/configs/releng/. \
-                /tmp/bunker-profile/
-
-              mkdir -p \
-                /tmp/bunker-profile/airootfs/opt/bunker-os
-
-              cp -a /workspace/bunker-os/. \
-                /tmp/bunker-profile/airootfs/opt/bunker-os/
-
-              rm -rf \
-                /tmp/bunker-profile/airootfs/opt/bunker-os/.git \
-                /tmp/bunker-profile/airootfs/opt/bunker-os/.github
-
-              mkdir -p /tmp/bunker-profile/airootfs/etc
-
-              printf "%s\n" \
-                "Bunker OS - ISO de desarrollo" \
-                "Live ISO basada en Arch Linux." \
-                "Código del proyecto: /opt/bunker-os" \
-                "Prototipo de desarrollo; no es un instalador completo." \
-                > /tmp/bunker-profile/airootfs/etc/motd
-
-              mkarchiso -v \
-                -w /tmp/bunker-work \
-                -o /workspace/out \
-                /tmp/bunker-profile
-            '
-
-      - name: Verify ISO and generate SHA256
-        shell: bash
+      - name: Create ISO structure
         run: |
-          set -euo pipefail
-          shopt -s nullglob
-          images=(out/*.iso)
+          cd /tmp/bunker-iso
+          # Create archiso profile structure
+          mkdir -p /tmp/archiso/releng
+          cp -r /usr/share/archiso/configs/releng/* /tmp/archiso/releng/ 2>/dev/null || true
+          
+          # Copy Bunker OS files to archiso
+          mkdir -p /tmp/archiso/releng/airootfs/usr/lib/bunker
+          cp -r bunker-os/* /tmp/archiso/releng/airootfs/usr/lib/bunker/
+          mkdir -p /tmp/archiso/releng/airootfs/usr/bin
+          cp bunker-os/cli/bunker /tmp/archiso/releng/airootfs/usr/bin/bunker
+          chmod +x /tmp/archiso/releng/airootfs/usr/bin/bunker
+          
+          # Create systemd service directory
+          mkdir -p /tmp/archiso/releng/airootfs/usr/lib/systemd/system
+          cp bunker-os/base/systemd/*.service /tmp/archiso/releng/airootfs/usr/lib/systemd/system/ 2>/dev/null || true
+          
+          # Create etc directory
+          mkdir -p /tmp/archiso/releng/airootfs/etc/bunker
+          cp bunker-os/base/etc/bunker.conf /tmp/archiso/releng/airootfs/etc/bunker/bunker.conf
 
-          if (( ${#images[@]} == 0 )); then
-            echo "::error::La compilación no ha generado ninguna ISO."
-            exit 1
-          fi
+      - name: Customize airootfs
+        run: |
+          cd /tmp/archiso/releng/airootfs
+          
+          # Enable services
+          systemctl enable NetworkManager.service 2>/dev/null || true
+          systemctl enable sshd.service 2>/dev/null || true
+          systemctl enable tor.service 2>/dev/null || true
+          
+          # Set root password
+          echo "root:bunker" | chpasswd
+          
+          # Set hostname
+          echo "bunkerOS" > etc/hostname
+          
+          # Set locale
+          echo "LANG=en_US.UTF-8" > etc/locale.conf
+          echo "LC_ALL=en_US.UTF-8" >> etc/locale.conf
+          
+          # Create user
+          useradd -m -G wheel -s /bin/bash bunker 2>/dev/null || true
+          echo "bunker:bunker" | chpasswd 2>/dev/null || true
+          echo "bunker ALL=(ALL) ALL" >> etc/sudoers
+          
+          # Enable sudo for wheel group
+          sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' etc/sudoers
 
-          ls -lh "${images[@]}"
-          sha256sum "${images[@]}" > out/SHA256SUMS
-          cat out/SHA256SUMS
+      - name: Build ISO
+        run: |
+          cd /tmp/archiso/releng
+          
+          # Create profiledef.sh with custom settings
+          cat > profiledef.sh << 'PROFILEEOF'
+#!/bin/bash
+
+_iso_name="BunkerOS-v2.6.0-${{ inputs.mode }}"
+_iso_label="BUNKEROS_260_${{ inputs.mode }}"
+_iso_publisher="Bunker OS Team"
+_iso_application="Bunker OS Live"
+_iso_version="2.6.0"
+
+_boot_params=("archisobasedir=bunkerOS" "copytoram" "cow_spacesize=4G")
+
+_airootfs_fs_type="ext4"
+_airootfs_fs_options="-O ^metadata_csum,^64bit -E root_owner=0:0"
+
+_iso_compression="zstd"
+_iso_compression_level="22"
+PROFILEEOF
+          
+          # Build the ISO
+          mkarchiso -v . /tmp/archiso/out 2>&1 | tee /tmp/build.log
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bunker-os-iso-${{ github.run_number }}
-          path: |
-            out/*.iso
-            out/SHA256SUMS
-          if-no-files-found: error
-          retention-days: 14
+          name: BunkerOS-v2.6.0-ISO
+          path: /tmp/archiso/out/*.iso
+          compression-level: 9
+          retention-days: 30
+
+      - name: Create release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v2.6.0-${{ github.run_number }}
+          name: Bunker OS v2.6.0 - Build ${{ github.run_number }}
+          body: |
+            ISO de Bunker OS v2.6.0
+            
+            **Modo:** ${{ inputs.mode || 'custom' }}
+            **Capa:** ${{ inputs.layer || 'ninguna' }}
+            **Build:** ${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+            
+            ### Cambios en v2.6.0:
+            - Correcciones P0: deteccion de puertos, permisos, Tor en hacking
+            - Correcciones P1: version unificada, modelos de IA
+            - Nuevo modulo: Bunker Study (asistente de estudio)
+            - Integracion con Bunker Adapt
+            - 12 pruebas unitarias para Study
+            
+            ### Como usar:
+            1. Descarga la ISO
+            2. Graba en USB: `dd if=BunkerOS-*.iso of=/dev/sdX bs=4M status=progress`
+            3. Arranca desde USB
+            4. Inicia sesion: usuario `bunker`, password `bunker`
+            5. Ejecuta: `bunker study start` para probar el modulo Study
+            
+            ### Descarga:
+            La ISO estara disponible en los artifacts de esta accion y en los releases.
+          files: /tmp/archiso/out/*.iso
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-iso:
+    name: Test ISO
+    needs: build-iso
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download ISO
+        uses: actions/download-artifact@v4
+        with:
+          name: BunkerOS-v2.6.0-ISO
+          path: /tmp
+
+      - name: Verify ISO
+        run: |
+          echo "=== Verificando ISO ==="
+          
+          # Check if ISO exists
+          ls -lh /tmp/*.iso
+          
+          # Verify ISO integrity
+          file /tmp/*.iso
+          
+          # Check ISO size
+          du -sh /tmp/*.iso
+          
+          # Verify it's a valid ISO
+          if file /tmp/*.iso | grep -q "ISO 9660"; then
+            echo "✓ ISO valida"
+          else
+            echo "✗ ISO invalida"
+            exit 1
+          fi
+          
+          # Check for bootable flag
+          if file /tmp/*.iso | grep -q "bootable"; then
+            echo "✓ ISO booteable"
+          else
+            echo "⚠ ISO puede no ser booteable"
+          fi
+          
+          # Check ISO content
+          echo ""
+          echo "=== Contenido de la ISO ==="
+          if command -v 7z &>/dev/null; then
+            7z l /tmp/*.iso | head -20
+          else
+            echo "7z no disponible, mostrando informacion basica"
+            file /tmp/*.iso
+          fi

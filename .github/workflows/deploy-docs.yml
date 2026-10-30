@@ -1,0 +1,181 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bunker-os/docs/**'
+      - 'bunker-os/README.md'
+      - 'bunker-os/CHANGELOG.md'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    container: python:3.11-alpine
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pip install mkdocs mkdocs-material mkdocs-git-revision-date-localized-plugin
+
+      - name: Configure mkdocs
+        run: |
+          cd bunker-os
+          
+          # Create mkdocs.yml if it doesn't exist
+          if [ ! -f mkdocs.yml ]; then
+            cat > mkdocs.yml << 'EOF'
+site_name: Bunker OS
+site_description: Una distribucion Linux segura y auto-gestionada basada en Arch Linux
+site_author: Bunker OS Team
+site_url: https://github.com/octcenano/bunkerOS
+
+repo_name: octcenano/bunkerOS
+repo_url: https://github.com/octcenano/bunkerOS
+
+edit_uri: edit/main/bunker-os/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: teal
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: teal
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+
+nav:
+  - Inicio: index.md
+  - Documentacion: DOCUMENTATION.md
+  - Arquitectura: ARCHITECTURE.md
+  - Cambios: CHANGELOG.md
+
+plugins:
+  - search
+  - git-revision-date-localized:
+      type: datetime
+      fallback_to_build_date: true
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true
+  - tables
+  - footnotes
+  - pymdownx.superfences
+  - pymdownx.tabbed
+  - pymdownx.emoji
+  - pymdownx.tasklist
+EOF
+          fi
+
+      - name: Build documentation
+        run: |
+          cd bunker-os
+          
+          # Copy README to index.md
+          cp README.md docs/index.md 2>/dev/null || true
+          
+          # Build docs
+          mkdocs build --site-name "Bunker OS v2.6.0" --site-dir /tmp/docs-site 2>&1 | tee /tmp/build-docs.log
+
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bunkerOS-docs
+          path: /tmp/docs-site
+          retention-days: 30
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: /tmp/docs-site
+          keep_files: false
+          force_orphan: true
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'Deploy Bunker OS v2.6.0 documentation - ${{ github.sha }}'
+
+  generate-pdf:
+    name: Generate PDF Documentation
+    runs-on: ubuntu-latest
+    container: python:3.11-alpine
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pip install mdv weasyprint
+
+      - name: Generate PDF
+        run: |
+          cd bunker-os/docs
+          
+          # Combine all markdown files
+          cat DOCUMENTATION.md ARCHITECTURE.md > /tmp/combined.md
+          
+          # Convert to PDF
+          mdv /tmp/combined.md > /tmp/bunkerOS-docs.html 2>&1 || true
+          
+          # Convert HTML to PDF
+          weasyprint /tmp/bunkerOS-docs.html /tmp/BunkerOS-v2.6.0-Documentation.pdf 2>&1 || true
+          
+          # Also generate from individual files
+          for file in *.md; do
+            base=$(basename "$file" .md)
+            mdv "$file" > "/tmp/${base}.html" 2>/dev/null || true
+            weasyprint "/tmp/${base}.html" "/tmp/${base}.pdf" 2>/dev/null || true
+          done
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bunkerOS-docs-pdf
+          path: /tmp/*.pdf
+          retention-days: 30
+
+      - name: Attach PDF to release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v2.6.0-docs
+          name: Bunker OS v2.6.0 - Documentacion PDF
+          body: |
+            Documentacion de Bunker OS v2.6.0 en formato PDF
+            
+            **Archivos incluidos:**
+            - BunkerOS-v2.6.0-Documentation.pdf (completo)
+            - DOCUMENTATION.pdf
+            - ARCHITECTURE.pdf
+            
+            **Commit:** ${{ github.sha }}
+          files: /tmp/*.pdf
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

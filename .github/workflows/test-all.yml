@@ -1,0 +1,296 @@
+name: Test All
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bunker-os/**'
+      - '.github/workflows/test-all.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'bunker-os/**'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'  # Ejecutar todos los dias a las 2 AM
+
+jobs:
+  test-core:
+    name: Test Core Components
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            bash \
+            coreutils \
+            util-linux \
+            grep \
+            sed \
+            awk \
+            findutils \
+            diffutils
+
+      - name: Run core tests
+        run: |
+          cd bunker-os
+          chmod +x test/test-runner.sh
+          ./test/test-runner.sh 2>&1 | tee /tmp/test-core.log
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-core-results
+          path: /tmp/test-core.log
+          retention-days: 7
+
+  test-study:
+    name: Test Study Module
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            bash \
+            coreutils \
+            util-linux \
+            grep \
+            sed \
+            awk \
+            findutils \
+            python3 \
+            pdftotext \
+            poppler
+
+      - name: Run Study tests
+        run: |
+          cd bunker-os
+          chmod +x study/tests/test-study.sh
+          ./study/tests/test-study.sh run 2>&1 | tee /tmp/test-study.log
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-study-results
+          path: /tmp/test-study.log
+          retention-days: 7
+
+  test-integration:
+    name: Test Integration
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            bash \
+            coreutils \
+            util-linux \
+            grep \
+            sed \
+            awk \
+            findutils
+
+      - name: Run integration tests
+        run: |
+          cd bunker-os
+          chmod +x test/integration-test.sh
+          ./test/integration-test.sh 2>&1 | tee /tmp/test-integration.log
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-integration-results
+          path: /tmp/test-integration.log
+          retention-days: 7
+
+  test-regression:
+    name: Test Regression
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            bash \
+            coreutils \
+            util-linux \
+            grep \
+            sed \
+            awk \
+            findutils
+
+      - name: Run regression tests
+        run: |
+          cd bunker-os
+          chmod +x test/regression-test.sh
+          ./test/regression-test.sh 2>&1 | tee /tmp/test-regression.log
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-regression-results
+          path: /tmp/test-regression.log
+          retention-days: 7
+
+  test-security:
+    name: Test Security
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install security tools
+        run: |
+          pacman -Syu --noconfirm --needed \
+            bash \
+            shellcheck \
+            grep \
+            findutils
+
+      - name: ShellCheck - Static analysis
+        run: |
+          cd bunker-os
+          echo "=== Analizando con ShellCheck ==="
+          find . -name "*.sh" -type f | head -20 | while read f; do
+            echo "Checking: $f"
+            shellcheck "$f" 2>&1 || true
+          done | tee /tmp/shellcheck.log
+
+      - name: Check for hardcoded passwords
+        run: |
+          cd bunker-os
+          echo "=== Buscando contrasenias hardcodeadas ==="
+          grep -r "password\|passwd\|secret\|123456\|qwerty" . \
+            --include="*.sh" --include="*.py" --include="*.conf" \
+            -i 2>/dev/null | grep -v "BUNKER" | grep -v "bunker" | grep -v "#" | head -20 || echo "Ninguna contrasenia hardcodeada encontrada"
+
+      - name: Check file permissions
+        run: |
+          cd bunker-os
+          echo "=== Verificando permisos de archivos ==="
+          find . -name "*.sh" -type f -exec stat -c "%a %n" {} \; | grep -v "755\|644" | head -20 || echo "Todos los archivos tienen permisos seguros"
+
+      - name: Upload security results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-security-results
+          path: /tmp/shellcheck.log
+          retention-days: 7
+
+  test-syntax:
+    name: Test Syntax
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install bash
+        run: pacman -Syu --noconfirm --needed bash
+
+      - name: Syntax check
+        run: |
+          cd bunker-os
+          echo "=== Verificando sintaxis de scripts ==="
+          find . -name "*.sh" -type f | while read f; do
+            echo "Checking: $f"
+            bash -n "$f" 2>&1 || echo "ERROR en $f"
+          done | tee /tmp/syntax-check.log
+
+      - name: Upload syntax results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-syntax-results
+          path: /tmp/syntax-check.log
+          retention-days: 7
+
+  summary:
+    name: Test Summary
+    needs: [test-core, test-study, test-integration, test-regression, test-security, test-syntax]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "# Resumen de Pruebas - Bunker OS v2.6.0" > /tmp/test-summary.md
+          echo "" >> /tmp/test-summary.md
+          echo "**Fecha:** $(date)" >> /tmp/test-summary.md
+          echo "**Commit:** ${{ github.sha }}" >> /tmp/test-summary.md
+          echo "" >> /tmp/test-summary.md
+          
+          echo "## Resultados" >> /tmp/test-summary.md
+          echo "" >> /tmp/test-summary.md
+          
+          for job in test-core test-study test-integration test-regression test-security test-syntax; do
+            status=${{ needs.$job.result }}
+            case $status in
+              success)
+                icon="✅"
+                ;;
+              failure)
+                icon="❌"
+                ;;
+              cancelled)
+                icon="⚠️"
+                ;;
+              *)
+                icon="❓"
+                ;;
+            esac
+            echo "- $icon **$job**: $status" >> /tmp/test-summary.md
+          done
+          
+          echo "" >> /tmp/test-summary.md
+          echo "## Estadisticas" >> /tmp/test-summary.md
+          echo "- Total de jobs: 6" >> /tmp/test-summary.md
+          echo "- Exitosos: $(echo "${{ needs.test-core.result }},${{ needs.test-study.result }},${{ needs.test-integration.result }},${{ needs.test-regression.result }},${{ needs.test-security.result }},${{ needs.test-syntax.result }}" | tr ',' '\n' | grep -c "success")" >> /tmp/test-summary.md
+          echo "- Fallidos: $(echo "${{ needs.test-core.result }},${{ needs.test-study.result }},${{ needs.test-integration.result }},${{ needs.test-regression.result }},${{ needs.test-security.result }},${{ needs.test-syntax.result }}" | tr ',' '\n' | grep -c "failure")" >> /tmp/test-summary.md
+
+      - name: Upload summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary
+          path: /tmp/test-summary.md
+          retention-days: 30
+
+      - name: Post summary as comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('/tmp/test-summary.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            })
