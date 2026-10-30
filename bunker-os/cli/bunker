@@ -45,6 +45,7 @@ Comandos principales:
   sentinel      Iniciar/detener Bunker Sentinel
   guardian      Iniciar/detener Bunker Guardian
   study         Iniciar Bunker Study (asistente de estudio)
+  whiteboard    Gestionar pizarra visual de conexiones logicas
   update        Actualizar el sistema (pacman + AUR)
   status        Mostrar estado del sistema
   help          Mostrar esta ayuda
@@ -272,6 +273,16 @@ cmd_guardian() {
 }
 
 cmd_study() {
+ncmd_whiteboard() {
+    if [[ -f "$BUNKER_ROOT/whiteboard/whiteboard.sh" ]]; then
+        source "$BUNKER_ROOT/whiteboard/whiteboard.sh"
+        main "$@"
+    else
+        bunker_error "Whiteboard no encontrado: $BUNKER_ROOT/whiteboard/whiteboard.sh"
+        bunker_exit 1
+    fi
+}
+
     if [[ -f "$BUNKER_ROOT/study/study.sh" ]]; then
         source "$BUNKER_ROOT/study/study.sh"
         main "$@"
