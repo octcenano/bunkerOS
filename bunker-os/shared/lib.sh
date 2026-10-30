@@ -17,7 +17,7 @@ export BUNKER_VAR="${BUNKER_VAR:-/var/lib/bunker}"
 export BUNKER_RUN="${BUNKER_RUN:-/run/bunker}"
 export BUNKER_LOG="${BUNKER_LOG:-/var/log/bunker}"
 
-export BUNKER_VERSION="0.1.0"
+export BUNKER_VERSION="2.6.0"
 export BUNKER_NAME="Bunker OS"
 
 # -----------------------------------------------------------------------------

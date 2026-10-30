@@ -44,6 +44,7 @@ Comandos principales:
   layer         Gestionar capas del sistema
   sentinel      Iniciar/detener Bunker Sentinel
   guardian      Iniciar/detener Bunker Guardian
+  study         Iniciar Bunker Study (asistente de estudio)
   update        Actualizar el sistema (pacman + AUR)
   status        Mostrar estado del sistema
   help          Mostrar esta ayuda
@@ -68,6 +69,10 @@ Ejemplos:
   bunker engine --mode gaming --layer performance
   bunker engine-flags adapt
   bunker engine-flags mode gaming
+  bunker study start
+  bunker study library-add <file> <subject>
+  bunker study summarize <file>
+  bunker study exam-import <file> <subject>
   bunker engine-flags layer stealth
   bunker engine-flags list-modes
   bunker engine-flags list-layers
@@ -266,6 +271,16 @@ cmd_guardian() {
     fi
 }
 
+cmd_study() {
+    if [[ -f "$BUNKER_ROOT/study/study.sh" ]]; then
+        source "$BUNKER_ROOT/study/study.sh"
+        main "$@"
+    else
+        bunker_error "Study no encontrado: $BUNKER_ROOT/study/study.sh"
+        bunker_exit 1
+    fi
+}
+
 cmd_update() {
     bunker_info "Actualizando Bunker OS..."
     bunker_require_root
@@ -365,6 +380,7 @@ main() {
         layer)       cmd_layer "$@" ;;
         sentinel)    cmd_sentinel "$@" ;;
         guardian)    cmd_guardian "$@" ;;
+        study)       cmd_study "$@" ;;
         update)      cmd_update "$@" ;;
         status)      cmd_status "$@" ;;
         help|--help|-h) show_help ;;
