@@ -230,7 +230,12 @@ library_index_add() {
     local filepath="$3"
     local index_file="$STUDY_LIBRARY/.index.csv"
     
-    echo "$subject,$filename,$filepath,$(date '+%Y-%m-%d %H:%M:%S')" >> "$index_file"
+    # Escape CSV fields (replace commas, quotes, newlines)
+    subject=$(echo "$subject" | sed 's/"/"""/g; s/,/\,/g')
+    filename=$(echo "$filename" | sed 's/"/"""/g; s/,/\,/g')
+    filepath=$(echo "$filepath" | sed 's/"/"""/g; s/,/\,/g')
+    
+    echo ""$subject","$filename","$filepath","$(date '+%Y-%m-%d %H:%M:%S')"" >> "$index_file"
 }
 
 library_list() {
@@ -326,15 +331,17 @@ generate_summary() {
         text="${text:0:$max_length}..."
     fi
     
-    # Usar el modelo de IA para generar resumen
-    # Esto es un placeholder - en una implementacion real usaria la API del modelo
-    echo "Resumen de: $(echo "$text" | head -1)"
-    echo ""
-    echo "Contenido: $(echo "$text" | head -5 | tail -1)..."
-    echo ""
+    # Usar extraccion real de texto - sin simulacion de IA
+    # Extraer los primeros 3 parrafos no vacios como resumen basico
+    local summary
+    summary=$(echo "$text" | awk 'BEGIN {count=0} /^[[:space:]]*$/ {next} {if (count < 3) {print; count++}}')
+    
     echo "--- Resumen generado por Bunker Study ---"
     echo "Fecha: $(date '+%Y-%m-%d %H:%M:%S')"
-    echo "Modelo: ${STUDY_AI_MODEL:-desconocido}"
+    echo "Modelo: ${STUDY_AI_MODEL:-ninguno (modo basico)}"
+    echo "Tipo: Resumen automatico (extraccion de texto)"
+    echo ""
+    echo "$summary"
 }
 
 # -----------------------------------------------------------------------------

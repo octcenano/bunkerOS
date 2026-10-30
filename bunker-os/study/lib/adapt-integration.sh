@@ -15,7 +15,7 @@ source "$BUNKER_ROOT/study/lib/study-lib.sh"
 # Configuracin
 # -----------------------------------------------------------------------------
 ADAPT_CONFIG="$BUNKER_ETC/bunker.conf"
-STUDY_AI_CONFIG="$BUNKER_VAR/study/ai-config.conf"
+# STUDY_AI_CONFIG removed - using ADAPT_CONFIG as single source
 
 # -----------------------------------------------------------------------------
 # Verificar y sincronizar modelo de IA con Adapt
@@ -29,14 +29,14 @@ sync_ai_model() {
     
     # Obtener modelo configurado en Study
     local study_model
-    study_model=$(bunker_config_get ai "default_model" "$STUDY_AI_CONFIG" 2>/dev/null)
+    study_model=$(bunker_config_get ai "default_model" "$ADAPT_CONFIG" 2>/dev/null)
     
     # Si Adapt tiene un modelo configurado, usarlo
     if [[ -n "$adapt_model" ]]; then
         # Verificar si el modelo es compatible con Study
         if is_model_supported "$adapt_model"; then
             study_info "Usando modelo de Adapt: $adapt_model"
-            bunker_config_set ai "default_model" "$adapt_model" "$STUDY_AI_CONFIG"
+            bunker_config_set ai "default_model" "$adapt_model" "$ADAPT_CONFIG"
             export STUDY_AI_MODEL="$adapt_model"
             return 0
         else
@@ -111,7 +111,7 @@ select_compatible_model_for_study() {
     
     if [[ -n "$best_model" ]]; then
         study_info "Modelo seleccionado: $best_model (requiere ${best_size}MB)"
-        bunker_config_set ai "default_model" "$best_model" "$STUDY_AI_CONFIG"
+        bunker_config_set ai "default_model" "$best_model" "$ADAPT_CONFIG"
         export STUDY_AI_MODEL="$best_model"
         return 0
     else
@@ -142,7 +142,7 @@ check_ai_resources() {
     
     # Verificar si hay modelo asignado
     local model
-    model=$(bunker_config_get ai "default_model" "$STUDY_AI_CONFIG" 2>/dev/null)
+    model=$(bunker_config_get ai "default_model" "$ADAPT_CONFIG" 2>/dev/null)
     
     if [[ -z "$model" ]]; then
         study_warn "No hay modelo de IA asignado. Intentando seleccionar..."
@@ -165,7 +165,7 @@ get_ai_model_info() {
     local model="${STUDY_AI_MODEL:-}"
     
     if [[ -z "$model" ]]; then
-        model=$(bunker_config_get ai "default_model" "$STUDY_AI_CONFIG" 2>/dev/null)
+        model=$(bunker_config_get ai "default_model" "$ADAPT_CONFIG" 2>/dev/null)
     fi
     
     if [[ -z "$model" ]]; then
@@ -230,7 +230,7 @@ set_ai_model() {
         return 1
     fi
     
-    bunker_config_set ai "default_model" "$model" "$STUDY_AI_CONFIG"
+    bunker_config_set ai "default_model" "$model" "$ADAPT_CONFIG"
     export STUDY_AI_MODEL="$model"
     study_info "Modelo configurado: $model"
     return 0
@@ -281,11 +281,11 @@ list_study_models() {
 # Inicializacin
 # -----------------------------------------------------------------------------
 adapt_integration_init() {
-    mkdir -p "$(dirname "$STUDY_AI_CONFIG")"
+    mkdir -p "$(dirname "$ADAPT_CONFIG")"
     
     # Crear configuracion de AI para Study si no existe
-    if [[ ! -f "$STUDY_AI_CONFIG" ]]; then
-        cat > "$STUDY_AI_CONFIG" <<EOF
+    if [[ ! -f "$ADAPT_CONFIG" ]]; then
+        cat > "$ADAPT_CONFIG" <<EOF
 [ai]
 default_model = "llama-2-7b"
 
@@ -297,7 +297,7 @@ max_cache_size_mb = 1024
 max_document_size_mb = 100
 max_processing_time_seconds = 300
 EOF
-        chmod 600 "$STUDY_AI_CONFIG"
+        chmod 600 "$ADAPT_CONFIG"
     fi
     
     # Sincronizar con Adapt
