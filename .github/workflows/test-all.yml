@@ -41,6 +41,12 @@ jobs:
           cd bunker-os
           chmod +x test/test-runner.sh
           ./test/test-runner.sh 2>&1 | tee /tmp/test-core.log
+          
+          # Fail if tests failed
+          if grep -q "FAILED\|ERROR\|Exit code: [1-9]" /tmp/test-core.log; then
+            echo "Core tests FAILED"
+            exit 1
+          fi
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -78,6 +84,12 @@ jobs:
           cd bunker-os
           chmod +x study/tests/test-study.sh
           ./study/tests/test-study.sh run 2>&1 | tee /tmp/test-study.log
+          
+          # Fail if tests failed
+          if grep -q "FAILED\|ERROR\|Exit code: [1-9]" /tmp/test-study.log; then
+            echo "Study tests FAILED"
+            exit 1
+          fi
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -112,6 +124,12 @@ jobs:
           cd bunker-os
           chmod +x test/integration-test.sh
           ./test/integration-test.sh 2>&1 | tee /tmp/test-integration.log
+          
+          # Fail if tests failed
+          if grep -q "FAILED\|ERROR\|Exit code: [1-9]" /tmp/test-integration.log; then
+            echo "Integration tests FAILED"
+            exit 1
+          fi
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -146,6 +164,12 @@ jobs:
           cd bunker-os
           chmod +x test/regression-test.sh
           ./test/regression-test.sh 2>&1 | tee /tmp/test-regression.log
+          
+          # Fail if tests failed
+          if grep -q "FAILED\|ERROR\|Exit code: [1-9]" /tmp/test-regression.log; then
+            echo "Regression tests FAILED"
+            exit 1
+          fi
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -176,24 +200,42 @@ jobs:
         run: |
           cd bunker-os
           echo "=== Analizando con ShellCheck ==="
-          find . -name "*.sh" -type f | head -20 | while read f; do
+          find . -name "*.sh" -type f | while read f; do
             echo "Checking: $f"
-            shellcheck "$f" 2>&1 || true
+            shellcheck "$f" 2>&1
           done | tee /tmp/shellcheck.log
+          
+          # Fail if ShellCheck found errors (excluding warnings)
+          if grep -q "error" /tmp/shellcheck.log; then
+            echo "ShellCheck found errors"
+            exit 1
+          fi
 
       - name: Check for hardcoded passwords
         run: |
           cd bunker-os
           echo "=== Buscando contrasenias hardcodeadas ==="
-          grep -r "password\|passwd\|secret\|123456\|qwerty" . \
+          if grep -r "password\|passwd\|secret" . \
             --include="*.sh" --include="*.py" --include="*.conf" \
-            -i 2>/dev/null | grep -v "BUNKER" | grep -v "bunker" | grep -v "#" | head -20 || echo "Ninguna contrasenia hardcodeada encontrada"
+            -i 2>/dev/null | grep -v "BUNKER" | grep -v "bunker" | grep -v "#" | grep -v "first-boot" | grep -v "chpasswd" | head -20; then
+            echo "WARNING: Possible hardcoded passwords found"
+            exit 1
+          else
+            echo "No hardcoded passwords found"
+          fi
 
       - name: Check file permissions
         run: |
           cd bunker-os
           echo "=== Verificando permisos de archivos ==="
-          find . -name "*.sh" -type f -exec stat -c "%a %n" {} \; | grep -v "755\|644" | head -20 || echo "Todos los archivos tienen permisos seguros"
+          insecure_files=$(find . -name "*.sh" -type f -exec stat -c "%a %n" {} \; | grep -v "755\|644" | head -20)
+          if [[ -n "$insecure_files" ]]; then
+            echo "Insecure file permissions found:"
+            echo "$insecure_files"
+            exit 1
+          else
+            echo "All files have secure permissions"
+          fi
 
       - name: Upload security results
         uses: actions/upload-artifact@v4
@@ -221,7 +263,10 @@ jobs:
           echo "=== Verificando sintaxis de scripts ==="
           find . -name "*.sh" -type f | while read f; do
             echo "Checking: $f"
-            bash -n "$f" 2>&1 || echo "ERROR en $f"
+            if ! bash -n "$f" 2>&1; then
+              echo "SYNTAX ERROR in $f"
+              exit 1
+            fi
           done | tee /tmp/syntax-check.log
 
       - name: Upload syntax results
@@ -240,7 +285,7 @@ jobs:
     steps:
       - name: Generate summary
         run: |
-          echo "# Resumen de Pruebas - Bunker OS v2.6.0" > /tmp/test-summary.md
+          echo "# Resumen de Pruebas - Bunker OS v2.6.1-stabilization" > /tmp/test-summary.md
           echo "" >> /tmp/test-summary.md
           echo "**Fecha:** $(date)" >> /tmp/test-summary.md
           echo "**Commit:** ${{ github.sha }}" >> /tmp/test-summary.md
@@ -249,17 +294,21 @@ jobs:
           echo "## Resultados" >> /tmp/test-summary.md
           echo "" >> /tmp/test-summary.md
           
+          failed_count=0
+          success_count=0
           for job in test-core test-study test-integration test-regression test-security test-syntax; do
             status=${{ needs.$job.result }}
             case $status in
               success)
-                icon="✅"
+                icon="✓"
+                success_count=$((success_count + 1))
                 ;;
               failure)
-                icon="❌"
+                icon="✗"
+                failed_count=$((failed_count + 1))
                 ;;
               cancelled)
-                icon="⚠️"
+                icon="⚠"
                 ;;
               *)
                 icon="❓"
@@ -271,8 +320,13 @@ jobs:
           echo "" >> /tmp/test-summary.md
           echo "## Estadisticas" >> /tmp/test-summary.md
           echo "- Total de jobs: 6" >> /tmp/test-summary.md
-          echo "- Exitosos: $(echo "${{ needs.test-core.result }},${{ needs.test-study.result }},${{ needs.test-integration.result }},${{ needs.test-regression.result }},${{ needs.test-security.result }},${{ needs.test-syntax.result }}" | tr ',' '\n' | grep -c "success")" >> /tmp/test-summary.md
-          echo "- Fallidos: $(echo "${{ needs.test-core.result }},${{ needs.test-study.result }},${{ needs.test-integration.result }},${{ needs.test-regression.result }},${{ needs.test-security.result }},${{ needs.test-syntax.result }}" | tr ',' '\n' | grep -c "failure")" >> /tmp/test-summary.md
+          echo "- Exitosos: $success_count" >> /tmp/test-summary.md
+          echo "- Fallidos: $failed_count" >> /tmp/test-summary.md
+          
+          if [[ $failed_count -gt 0 ]]; then
+            echo "" >> /tmp/test-summary.md
+            echo "⚠️  ALGUNAS PRUEBAS FALLARON - Revisar logs" >> /tmp/test-summary.md
+          fi
 
       - name: Upload summary
         uses: actions/upload-artifact@v4

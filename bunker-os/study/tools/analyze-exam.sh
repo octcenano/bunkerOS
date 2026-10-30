@@ -142,7 +142,7 @@ analyze_exam_structure() {
     
     while IFS= read -r line; do
         # Detectar secciones (lineas que parecen titulos)
-        if [[ "$line" =~ ^[A-Z][A-Z\ ]+[:.]?$ ]] || [[ "$line" =~ ^[0-9]+[\.\ )]+[A-Za-z] ]]; then
+        if [[ "$line" =~ ^[A-Z][A-Z[:space:]]*[:.]?$ ]] || [[ "$line" =~ ^[0-9]+[.[:space:]]+[A-Za-z] ]]; then
             if [[ -n "$current_section" ]]; then
                 sections+=("$current_section: $line_count lineas")
             fi

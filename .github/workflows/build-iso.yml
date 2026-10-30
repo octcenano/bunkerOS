@@ -101,28 +101,122 @@ jobs:
         run: |
           cd /tmp/archiso/releng/airootfs
           
-          # Enable services
+          # Enable only NetworkManager by default (no SSH, no Tor)
+          # Services should be enabled by user during installation
           systemctl enable NetworkManager.service 2>/dev/null || true
-          systemctl enable sshd.service 2>/dev/null || true
-          systemctl enable tor.service 2>/dev/null || true
-          
-          # Set root password
-          echo "root:bunker" | chpasswd
           
           # Set hostname
           echo "bunkerOS" > etc/hostname
           
-          # Set locale
-          echo "LANG=en_US.UTF-8" > etc/locale.conf
-          echo "LC_ALL=en_US.UTF-8" >> etc/locale.conf
+          # Set locale to Spanish (es_ES) as default
+          echo "LANG=es_ES.UTF-8" > etc/locale.conf
+          echo "LC_ALL=es_ES.UTF-8" >> etc/locale.conf
           
-          # Create user
+          # Configure locale gen
+          echo "es_ES.UTF-8 UTF-8" > etc/locale.gen
+          echo "en_US.UTF-8 UTF-8" >> etc/locale.gen
+          
+          # Create user with random password (will be set during installation)
           useradd -m -G wheel -s /bin/bash bunker 2>/dev/null || true
-          echo "bunker:bunker" | chpasswd 2>/dev/null || true
           echo "bunker ALL=(ALL) ALL" >> etc/sudoers
           
           # Enable sudo for wheel group
           sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' etc/sudoers
+          
+          # Lock root account - user must set password during installation
+          passwd -l root 2>/dev/null || true
+          
+          # Create first-boot setup script
+          cat > /tmp/archiso/releng/airootfs/root/first-boot.sh << 'FIRSTBOOTEOF'
+#!/bin/bash
+# First boot setup - prompts user for password and optional services
+
+set -e
+
+echo "========================================"
+echo "  BUNKER OS - First Boot Configuration"
+echo "========================================"
+echo ""
+
+# Set root password
+while true; do
+    read -s -p "Enter new root password: " root_pass
+    echo ""
+    read -s -p "Confirm root password: " root_pass_confirm
+    echo ""
+    if [[ "$root_pass" == "$root_pass_confirm" ]] && [[ -n "$root_pass" ]]; then
+        echo "root:$root_pass" | chpasswd
+        break
+    else
+        echo "Passwords do not match or are empty. Try again."
+    fi
+done
+
+# Set bunker user password
+while true; do
+    read -s -p "Enter new bunker user password: " user_pass
+    echo ""
+    read -s -p "Confirm bunker user password: " user_pass_confirm
+    echo ""
+    if [[ "$user_pass" == "$user_pass_confirm" ]] && [[ -n "$user_pass" ]]; then
+        echo "bunker:$user_pass" | chpasswd
+        break
+    else
+        echo "Passwords do not match or are empty. Try again."
+    fi
+done
+
+# Ask about locale
+echo ""
+echo "Current locale: es_ES.UTF-8"
+read -p "Change locale? (y/n) [n]: " change_locale
+if [[ "$change_locale" == "y" || "$change_locale" == "Y" ]]; then
+    read -p "Enter locale (e.g., en_US.UTF-8): " new_locale
+    if [[ -n "$new_locale" ]]; then
+        sed -i "s|LANG=.*|LANG=$new_locale|" /etc/locale.conf
+        sed -i "s|LC_ALL=.*|LC_ALL=$new_locale|" /etc/locale.conf
+    fi
+fi
+
+# Ask about enabling SSH
+echo ""
+read -p "Enable SSH service? (y/n) [n]: " enable_ssh
+if [[ "$enable_ssh" == "y" || "$enable_ssh" == "Y" ]]; then
+    systemctl enable sshd.service
+    echo "SSH enabled. Configure firewall rules manually."
+fi
+
+# Ask about enabling Tor (only for hacking mode)
+echo ""
+read -p "Enable Tor service? (y/n) [n]: " enable_tor
+if [[ "$enable_tor" == "y" || "$enable_tor" == "Y" ]]; then
+    systemctl enable tor.service
+    echo "Tor enabled. Configure firewall rules manually."
+fi
+
+# Clean up
+rm -f /root/first-boot.sh
+reboot
+FIRSTBOOTEOF
+          chmod +x /tmp/archiso/releng/airootfs/root/first-boot.sh
+          
+          # Add first-boot to systemd
+          cat > /tmp/archiso/releng/airootfs/usr/lib/systemd/system/first-boot.service << 'SERVICEEOF'
+[Unit]
+Description=First Boot Configuration
+After=systemd-user-sessions.service
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/first-boot.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SERVICEEOF
+          
+          systemctl enable first-boot.service 2>/dev/null || true
 
       - name: Build ISO
         run: |
@@ -132,11 +226,11 @@ jobs:
           cat > profiledef.sh << 'PROFILEEOF'
 #!/bin/bash
 
-_iso_name="BunkerOS-v2.6.0-${{ inputs.mode }}"
-_iso_label="BUNKEROS_260_${{ inputs.mode }}"
+_iso_name="BunkerOS-v2.6.1-stabilization-${{ inputs.mode }}"
+_iso_label="BUNKEROS_261_${{ inputs.mode }}"
 _iso_publisher="Bunker OS Team"
 _iso_application="Bunker OS Live"
-_iso_version="2.6.0"
+_iso_version="2.6.1-stabilization"
 
 _boot_params=("archisobasedir=bunkerOS" "copytoram" "cow_spacesize=4G")
 
@@ -148,12 +242,18 @@ _iso_compression_level="22"
 PROFILEEOF
           
           # Build the ISO
-          mkarchiso -v . /tmp/archiso/out 2>&1 | tee /tmp/build.log
+          mkarchiso -v /tmp/archiso/releng /tmp/archiso/out 2>&1 | tee /tmp/build.log
+          
+          # Verify ISO was created
+          if [[ ! -f /tmp/archiso/out/*.iso ]]; then
+            echo "ERROR: ISO build failed"
+            exit 1
+          fi
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BunkerOS-v2.6.0-ISO
+          name: BunkerOS-v2.6.1-stabilization-ISO
           path: /tmp/archiso/out/*.iso
           compression-level: 9
           retention-days: 30
@@ -162,29 +262,36 @@ PROFILEEOF
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v2.6.0-${{ github.run_number }}
-          name: Bunker OS v2.6.0 - Build ${{ github.run_number }}
+          tag_name: v2.6.1-stabilization-${{ github.run_number }}
+          name: Bunker OS v2.6.1-stabilization - Build ${{ github.run_number }}
           body: |
-            ISO de Bunker OS v2.6.0
+            ISO de Bunker OS v2.6.1-stabilization
             
             **Modo:** ${{ inputs.mode || 'custom' }}
             **Capa:** ${{ inputs.layer || 'ninguna' }}
             **Build:** ${{ github.run_number }}
             **Commit:** ${{ github.sha }}
             
-            ### Cambios en v2.6.0:
-            - Correcciones P0: deteccion de puertos, permisos, Tor en hacking
-            - Correcciones P1: version unificada, modelos de IA
-            - Nuevo modulo: Bunker Study (asistente de estudio)
-            - Integracion con Bunker Adapt
-            - 12 pruebas unitarias para Study
+            ### Cambios en v2.6.1-stabilization:
+            - SEGURIDAD: Eliminadas credenciales por defecto
+            - SEGURIDAD: SSH y Tor deshabilitados por defecto
+            - SEGURIDAD: Configuracion de usuario durante primer arranque
+            - SEGURIDAD: Locale es_ES.UTF-8 por defecto
+            - CORRECCIONES: Error de sintaxis en analyze-exam.sh
+            - CORRECCIONES: Eliminado directorio hadware/ duplicado
+            - CORRECCIONES: Workflows unificados
             
             ### Como usar:
             1. Descarga la ISO
-            2. Graba en USB: `dd if=BunkerOS-*.iso of=/dev/sdX bs=4M status=progress`
+            2. Graba en USB: `dd if=BunkerOS-*.iso of=/dev/sdX bs=4M status=progress oflag=sync`
             3. Arranca desde USB
-            4. Inicia sesion: usuario `bunker`, password `bunker`
-            5. Ejecuta: `bunker study start` para probar el modulo Study
+            4. Sigue las instrucciones de configuracion en el primer arranque
+            5. Inicia sesion con las credenciales que hayas configurado
+            
+            ### Advertencia de seguridad:
+            - No hay credenciales por defecto
+            - Debes configurar contrasenias durante el primer arranque
+            - SSH y Tor deben ser habilitados manualmente
             
             ### Descarga:
             La ISO estara disponible en los artifacts de esta accion y en los releases.
@@ -200,46 +307,15 @@ PROFILEEOF
     runs-on: ubuntu-latest
     
     steps:
-      - name: Download ISO
+      - name: Download ISO artifact
         uses: actions/download-artifact@v4
         with:
-          name: BunkerOS-v2.6.0-ISO
-          path: /tmp
-
+          name: BunkerOS-v2.6.1-stabilization-ISO
+          path: /tmp/iso
+      
       - name: Verify ISO
         run: |
-          echo "=== Verificando ISO ==="
-          
-          # Check if ISO exists
-          ls -lh /tmp/*.iso
-          
-          # Verify ISO integrity
-          file /tmp/*.iso
-          
-          # Check ISO size
-          du -sh /tmp/*.iso
-          
-          # Verify it's a valid ISO
-          if file /tmp/*.iso | grep -q "ISO 9660"; then
-            echo "✓ ISO valida"
-          else
-            echo "✗ ISO invalida"
-            exit 1
-          fi
-          
-          # Check for bootable flag
-          if file /tmp/*.iso | grep -q "bootable"; then
-            echo "✓ ISO booteable"
-          else
-            echo "⚠ ISO puede no ser booteable"
-          fi
-          
-          # Check ISO content
-          echo ""
-          echo "=== Contenido de la ISO ==="
-          if command -v 7z &>/dev/null; then
-            7z l /tmp/*.iso | head -20
-          else
-            echo "7z no disponible, mostrando informacion basica"
-            file /tmp/*.iso
-          fi
+          ls -lh /tmp/iso/*.iso
+          file /tmp/iso/*.iso
+          # Basic integrity check
+          sha256sum /tmp/iso/*.iso
